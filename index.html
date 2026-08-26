@@ -294,7 +294,6 @@ function QuranApp() {
         const indo = data.data[2]?.ayahs || [];
         const audioData = data.data[3]?.ayahs || [];
 
-        // Penanganan khusus Surah Al-Fatihah (1)
         if (selected === 1 && arabic.length > 0) {
           arabic = arabic.slice(1);
         }
@@ -303,11 +302,10 @@ function QuranApp() {
           let origIndex = selected === 1 ? i + 1 : i;
           let arabicText = a.text;
 
-          // Jika bukan Surah At-Taubah (9) dan bukan Al-Fatihah (1), 
-          // bersihkan teks Bismillah di awal ayat pertama menggunakan Regex yang fleksibel
+          // Pembersihan Bismillah mutlak pada ayat 1 (kecuali At-Taubah 9 & Al-Fatihah 1)
           if (selected !== 9 && selected !== 1 && a.numberInSurah === 1) {
-            const bismillahRegex = /^(بِسْمِ\s*اللّٰهِ\s*الرَّحْمٰنِ\s*الرَّحِيْمِ|بِسْمِ\s*اللَّهِ\s*الرَّحْمَٰنِ\s*الرَّحِيمِ)\s*/u;
-            arabicText = arabicText.replace(bismillahRegex, "").trim();
+            // Membuang teks apa pun dari awal string hingga kata "الرَّحِيمِ" atau "الرَّحِيْمِ"
+            arabicText = arabicText.replace(/^[\s\S]*?الرَّحِي[ْمِم]\s*/u, "").trim();
           }
 
           return {
