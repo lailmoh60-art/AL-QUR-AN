@@ -1,0 +1,15 @@
+{
+  "name": "Mushaf & Doa Digital",
+  "short_name": "MushafKu",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#F7F0E1",
+  "theme_color": "#0B3D2E",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3067/3067417.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
