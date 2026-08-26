@@ -624,7 +624,35 @@ const PRAYER_NAMES = {
   Isha: "Isya",
 };
 
-const ADHAN_AUDIO_URL = "https://cdn.islamic.network/adhan/audio/azan1.mp3";
+// Beberapa sumber audio adzan dicoba berurutan; kalau semua gagal (link mati/offline),
+// nada pengingat sederhana dibunyikan langsung dari perangkat (tidak butuh internet)
+// supaya alarm TETAP berbunyi, tidak pernah diam total.
+const ADHAN_AUDIO_URLS = [
+  "https://cdn.islamic.network/adhan/audio/azan1.mp3",
+  "https://www.islamcan.com/audio/adhan/azan1.mp3",
+];
+
+function playFallbackBeep() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new Ctx();
+    const now = ctx.currentTime;
+    [0, 0.45, 0.9].forEach((offset) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = 880;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      gain.gain.setValueAtTime(0.001, now + offset);
+      gain.gain.exponentialRampToValueAtTime(0.2, now + offset + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.35);
+      osc.start(now + offset);
+      osc.stop(now + offset + 0.4);
+    });
+  } catch (e) {
+    // Kalau Web Audio API pun tidak tersedia, sudah tidak ada cara lain untuk berbunyi.
+  }
+}
 
 function PrayerScreen({ location, locationStatus, onRequestLocation }) {
   const [timings, setTimings] = useState(null);
@@ -667,6 +695,8 @@ function PrayerScreen({ location, locationStatus, onRequestLocation }) {
     return () => { cancelled = true; };
   }, [location]);
 
+  const lastFiredRef = useRef({});
+
   useEffect(() => {
     if (!alarmActive || !timings) return;
     const interval = setInterval(() => {
@@ -678,7 +708,10 @@ function PrayerScreen({ location, locationStatus, onRequestLocation }) {
       Object.keys(PRAYER_NAMES).forEach((key) => {
         if (timings[key]) {
           const prayerTime = timings[key].substring(0, 5);
-          if (prayerTime === currentTimeStr && playingKey === null) {
+          // Dedupe: hanya sekali per waktu sholat, bukan berulang tiap 10 detik
+          // selama menit yang sama masih berjalan.
+          if (prayerTime === currentTimeStr && lastFiredRef.current[key] !== currentTimeStr) {
+            lastFiredRef.current[key] = currentTimeStr;
             playAdhan(key);
             if (typeof Notification !== "undefined" && Notification.permission === "granted") {
               new Notification(`Waktu ${PRAYER_NAMES[key]} Telah Tiba`, {
@@ -692,7 +725,7 @@ function PrayerScreen({ location, locationStatus, onRequestLocation }) {
     }, 10000);
 
     return () => clearInterval(interval);
-  }, [timings, alarmActive, playingKey]);
+  }, [timings, alarmActive]);
 
   const requestNotificationPermission = () => {
     if (typeof Notification !== "undefined" && Notification.permission !== "granted") {
@@ -759,10 +792,18 @@ function PrayerScreen({ location, locationStatus, onRequestLocation }) {
 
   const handleOrientation = (e) => {
     let compass = null;
-    if (e.webkitCompassHeading !== undefined && e.webkitCompassHeading !== null) {
+    if (typeof e.webkitCompassHeading === "number") {
+      // iOS Safari: nilai ini sudah berupa arah kompas sebenarnya (0 = Utara).
       compass = e.webkitCompassHeading;
-    } else if (e.alpha !== null && e.alpha !== undefined) {
-      compass = e.absolute ? e.alpha : (360 - e.alpha);
+    } else if (e.absolute === true && typeof e.alpha === "number") {
+      // Android Chrome dengan sensor "absolute": alpha berlawanan arah jarum jam
+      // dari Utara sesuai spesifikasi W3C, jadi dibalik dulu supaya searah jarum jam.
+      compass = (360 - e.alpha) % 360;
+    } else if (typeof e.alpha === "number") {
+      // Fallback: browser hanya memberi orientasi relatif (bukan kompas sebenarnya),
+      // jadi hasilnya kurang akurat — tetap dipakai tapi user diberi tahu.
+      compass = (360 - e.alpha) % 360;
+      setSensorError("Sensor perangkat ini tidak mendukung arah mutlak, akurasi mungkin berkurang.");
     }
     if (compass !== null && !isNaN(compass)) {
       setHeading(compass);
@@ -780,13 +821,24 @@ function PrayerScreen({ location, locationStatus, onRequestLocation }) {
   const playAdhan = (key) => {
     if (audioRef.current) audioRef.current.pause();
     setAudioError(false);
-    const audio = new Audio(ADHAN_AUDIO_URL);
-    audioRef.current = audio;
-    audio.onended = () => setPlayingKey(null);
-    audio.play().then(() => setPlayingKey(key)).catch(() => {
-      setAudioError(true);
-      setPlayingKey(null);
-    });
+
+    const tryUrl = (idx) => {
+      if (idx >= ADHAN_AUDIO_URLS.length) {
+        // Semua sumber audio gagal — tetap bunyikan nada pengingat lokal
+        // supaya alarm tidak pernah diam total.
+        setAudioError(true);
+        setPlayingKey(null);
+        playFallbackBeep();
+        return;
+      }
+      const audio = new Audio(ADHAN_AUDIO_URLS[idx]);
+      audioRef.current = audio;
+      audio.onended = () => setPlayingKey(null);
+      audio.onerror = () => tryUrl(idx + 1);
+      audio.play().then(() => setPlayingKey(key)).catch(() => tryUrl(idx + 1));
+    };
+
+    tryUrl(0);
   };
 
   const stopAdhan = () => {
@@ -802,17 +854,22 @@ function PrayerScreen({ location, locationStatus, onRequestLocation }) {
   return (
     <div style={{ maxWidth: 480, margin: "0 auto", paddingBottom: 32 }}>
       <div style={{ background: COLORS.deep, padding: "28px 20px 22px", borderBottomLeftRadius: 20, borderBottomRightRadius: 20, color: "#fff" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <IconClock size={22} color={COLORS.gold} />
             <h1 style={{ color: COLORS.cream, fontSize: 24, fontWeight: 800, margin: 0 }}>Sholat</h1>
           </div>
-          <button
-            onClick={() => setAlarmActive(!alarmActive)}
-            style={{ background: alarmActive ? COLORS.gold : "rgba(255,255,255,0.15)", color: alarmActive ? COLORS.deep : "#fff", border: "none", padding: "6px 12px", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer" }}
-          >
-            {alarmActive ? "🔔 Alarm ON" : "🔕 Alarm OFF"}
-          </button>
+          <div style={{ textAlign: "right" }}>
+            <button
+              onClick={() => setAlarmActive(!alarmActive)}
+              style={{ background: alarmActive ? COLORS.gold : "rgba(255,255,255,0.15)", color: alarmActive ? COLORS.deep : "#fff", border: "none", padding: "6px 12px", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+            >
+              {alarmActive ? "🔔 Alarm ON" : "🔕 Alarm OFF"}
+            </button>
+            <p style={{ fontSize: 9.5, color: COLORS.cream, opacity: 0.65, margin: "4px 0 0", maxWidth: 130, lineHeight: 1.3 }}>
+              {alarmActive ? "Adzan otomatis bunyi saat waktu sholat tiba" : "Alarm otomatis nonaktif"}
+            </p>
+          </div>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10 }}>
@@ -871,7 +928,7 @@ function PrayerScreen({ location, locationStatus, onRequestLocation }) {
           })}
           {audioError && (
             <p style={{ textAlign: "center", fontSize: 12, color: "#8B3A2B", marginTop: 8 }}>
-              Audio adzan gagal dimuat — coba lagi atau cek koneksi internet.
+              Link audio adzan online gagal dimuat — nada pengingat singkat dibunyikan sebagai gantinya.
             </p>
           )}
         </div>
