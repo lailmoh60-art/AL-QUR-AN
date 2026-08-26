@@ -26,6 +26,29 @@
 <script type="text/babel">
 const { useState, useEffect, useMemo, useRef } = React;
 
+// ---- Bismillah de-duplication helpers ----
+// API menaruh Bismillah di dalam teks ayat 1 untuk setiap surah kecuali At-Taubah (9).
+// Karena kita SUDAH menampilkan kartu Bismillah terpisah, teks ayat 1 perlu dibersihkan
+// dari Bismillah supaya tidak tampil dua kali. Al-Fatihah (1) dikecualikan karena
+// ayat 1-nya MEMANG persis Bismillah itu sendiri, jadi tidak boleh dipotong.
+const BISMILLAH_WORDS = ["بِسْمِ", "اللَّهِ", "الرَّحْمَٰنِ", "الرَّحِيمِ"];
+function normalizeArabic(s) {
+  return s
+    .replace(/[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED]/g, "") // hapus tanda baca/diakritik
+    .replace(/[\u0622\u0623\u0625\u0671]/g, "\u0627") // samakan varian alif
+    .replace(/\u0629/g, "\u0647");
+}
+function stripBismillahFromAyah(surahNumber, ayahNumber, text) {
+  if (ayahNumber !== 1 || surahNumber === 1 || surahNumber === 9) return text;
+  const words = text.trim().split(/\s+/);
+  if (words.length <= 4) return text;
+  const firstFour = words.slice(0, 4).map(normalizeArabic);
+  const refFour = BISMILLAH_WORDS.map(normalizeArabic);
+  const matches = firstFour.every((w, i) => w === refFour[i]);
+  if (!matches) return text;
+  return words.slice(4).join(" ");
+}
+
 const CLEAN_SURAH_NAMES = {
   1: "Al-Fatihah", 2: "Al-Baqarah", 3: "Ali Imran", 4: "An-Nisa", 5: "Al-Ma'idah",
   6: "Al-An'am", 7: "Al-A'raf", 8: "Al-Anfal", 9: "At-Taubah", 10: "Yunus",
@@ -289,21 +312,22 @@ function QuranApp() {
         const res = await fetch(`https://api.alquran.cloud/v1/surah/${selected}/editions/quran-uthmani,en.transliteration,id.indonesian,ar.alafasy`);
         if (!res.ok) throw new Error("Gagal");
         const data = await res.json();
-        let arabic = data.data[0]?.ayahs || [];
+        const arabic = data.data[0]?.ayahs || [];
         const translit = data.data[1]?.ayahs || [];
         const indo = data.data[2]?.ayahs || [];
         const audioData = data.data[3]?.ayahs || [];
 
-        if (selected === 1 && arabic.length > 0) {
-          arabic = arabic.slice(1);
-        }
-
+        // Catatan perbaikan: sebelumnya di sini ada `.slice(1)` khusus surah 1 yang
+        // berisiko membuang ayat 1 Al-Fatihah yang sesungguhnya. Array dari API
+        // sudah selaras 1:1 per ayat, jadi tidak perlu dipotong sama sekali —
+        // yang perlu ditangani hanyalah teks Bismillah yang menempel di ayat 1
+        // (function stripBismillahFromAyah di bawah).
         const merged = arabic.map((a, i) => ({
           number: a.numberInSurah,
-          arabic: a.text,
-          transliteration: translit[selected === 1 ? i + 1 : i]?.text || "",
-          translation: indo[selected === 1 ? i + 1 : i]?.text || "",
-          audio: audioData[selected === 1 ? i + 1 : i]?.audio || "",
+          arabic: stripBismillahFromAyah(selected, a.numberInSurah, a.text),
+          transliteration: translit[i]?.text || "",
+          translation: indo[i]?.text || "",
+          audio: audioData[i]?.audio || "",
         }));
         if (!cancelled) setAyat(merged);
       } catch (e) {
@@ -498,7 +522,10 @@ function DetailScreen({ surah, ayat, loading, error, onBack, isFav, onToggleFav 
   };
 
   const displayName = surah ? (CLEAN_SURAH_NAMES[surah.number] || surah.englishName) : "";
-  const showBismillah = surah && surah.number !== 9;
+  // Fix: Al-Fatihah (1) dikecualikan juga dari kartu Bismillah terpisah,
+  // karena ayat 1 Al-Fatihah SUDAH PERSIS Bismillah itu sendiri — kalau kartu ini
+  // tetap ditampilkan, hasilnya Bismillah akan terlihat dua kali berturut-turut.
+  const showBismillah = surah && surah.number !== 9 && surah.number !== 1;
 
   return (
     <div style={{ maxWidth: 480, margin: "0 auto", minHeight: "100vh" }}>
@@ -539,7 +566,7 @@ function DetailScreen({ surah, ayat, loading, error, onBack, isFav, onToggleFav 
           </div>
         )}
         {error && <div style={{ textAlign: "center", padding: "32px 16px", color: "#8B3A2B", fontSize: 14 }}>{error}</div>}
-        
+
         {!loading && !error && showBismillah && (
           <div style={{ background: "#fff", borderRadius: 14, padding: "18px 16px", marginBottom: 12, border: `1px solid ${COLORS.deep}12`, textAlign: "center" }}>
             <p className="arabic-text" style={{ fontSize: 24, fontWeight: 700, color: COLORS.charcoal, margin: "0 0 8px", textAlign: "center" }}>
@@ -607,7 +634,7 @@ function PrayerScreen({ location, locationStatus, onRequestLocation }) {
   const [qibla, setQibla] = useState(null);
   const [loadingQibla, setLoadingQibla] = useState(false);
   const [errorQibla, setErrorQibla] = useState(null);
-  
+
   const [heading, setHeading] = useState(0);
   const [sensorActive, setSensorActive] = useState(false);
   const [sensorError, setSensorError] = useState("");
@@ -640,7 +667,6 @@ function PrayerScreen({ location, locationStatus, onRequestLocation }) {
     return () => { cancelled = true; };
   }, [location]);
 
-  // Cek otomatis alarm adzan setiap menit berdasarkan jam realtime
   useEffect(() => {
     if (!alarmActive || !timings) return;
     const interval = setInterval(() => {
@@ -651,10 +677,10 @@ function PrayerScreen({ location, locationStatus, onRequestLocation }) {
 
       Object.keys(PRAYER_NAMES).forEach((key) => {
         if (timings[key]) {
-          const prayerTime = timings[key].substring(0, 5); // Format "HH:MM"
+          const prayerTime = timings[key].substring(0, 5);
           if (prayerTime === currentTimeStr && playingKey === null) {
             playAdhan(key);
-            if (Notification && Notification.permission === "granted") {
+            if (typeof Notification !== "undefined" && Notification.permission === "granted") {
               new Notification(`Waktu ${PRAYER_NAMES[key]} Telah Tiba`, {
                 body: "Mari segera menunaikan ibadah sholat.",
                 icon: "./icon.png"
@@ -663,7 +689,7 @@ function PrayerScreen({ location, locationStatus, onRequestLocation }) {
           }
         }
       });
-    }, 10000); // Cek tiap 10 detik
+    }, 10000);
 
     return () => clearInterval(interval);
   }, [timings, alarmActive, playingKey]);
@@ -788,7 +814,7 @@ function PrayerScreen({ location, locationStatus, onRequestLocation }) {
             {alarmActive ? "🔔 Alarm ON" : "🔕 Alarm OFF"}
           </button>
         </div>
-        
+
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, color: COLORS.cream, opacity: 0.8, fontSize: 12.5 }}>
             <IconMapPin size={13} color={COLORS.cream} />
@@ -863,7 +889,7 @@ function PrayerScreen({ location, locationStatus, onRequestLocation }) {
 
           {!loadingQibla && !errorQibla && qibla !== null && (
             <div style={{ background: "#fff", borderRadius: 16, padding: "20px 16px", border: `1px solid ${COLORS.deep}12` }}>
-              
+
               {!sensorActive ? (
                 <div style={{ marginBottom: 16, padding: "12px", background: COLORS.cream, borderRadius: 10 }}>
                   <p style={{ fontSize: 13, color: COLORS.deep, fontWeight: 600, margin: "0 0 10px" }}>
@@ -891,7 +917,7 @@ function PrayerScreen({ location, locationStatus, onRequestLocation }) {
                     <IconSun size={16} color={COLORS.gold} /> Tips Jika Kompas HP Ngawur
                   </div>
                   <p style={{ fontSize: 12, color: COLORS.charcoal, lineHeight: 1.5, margin: "0 0 8px" }}>
-                    Sensor kompas HP sering terganggu casing magnetik atau logam sekitar. Coba **gerakkan HP membentuk angka 8** di udara beberapa kali untuk kalibrasi ulang.
+                    Sensor kompas HP sering terganggu casing magnetik atau logam sekitar. Coba gerakkan HP membentuk angka 8 di udara beberapa kali untuk kalibrasi ulang.
                   </p>
                 </div>
               )}
@@ -900,7 +926,7 @@ function PrayerScreen({ location, locationStatus, onRequestLocation }) {
                 <svg width="220" height="220" viewBox="0 0 220 220">
                   <circle cx="110" cy="110" r="100" fill={COLORS.cream} stroke={COLORS.deep} strokeWidth="3" />
                   <polygon points="110,6 104,18 116,18" fill={COLORS.deep} />
-                  
+
                   <g transform={`rotate(${dialRotation} 110 110)`} style={{ transition: "transform 0.05s linear" }}>
                     <text x="110" y="28" textAnchor="middle" fontSize="13" fontWeight="800" fill={COLORS.deep}>U</text>
                     <text x="194" y="115" textAnchor="middle" fontSize="13" fontWeight="700" fill={COLORS.teal}>T</text>
