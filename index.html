@@ -17,8 +17,8 @@
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 <style>
-  html, body, #root { margin: 0; padding: 0; min-height: 100vh; }
-  * { box-sizing: border-box; }
+  html, body, #root { margin: 0; padding: 0; min-height: 100vh; background: #F7F0E1; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 </style>
 </head>
 <body>
@@ -282,15 +282,20 @@ function QuranApp() {
         const res = await fetch(`https://api.alquran.cloud/v1/surah/${selected}/editions/quran-uthmani,id.indonesian,ar.alafasy`);
         if (!res.ok) throw new Error("Gagal");
         const data = await res.json();
-        const arabic = data.data[0]?.ayahs || [];
+        let arabic = data.data[0]?.ayahs || [];
         const indo = data.data[1]?.ayahs || [];
         const audioData = data.data[2]?.ayahs || [];
+
+        // Pemisahan bismillah agar Surah Al-Fatihah murni dimulai dari ayat "Al-Hamdu..."
+        if (selected === 1 && arabic.length > 0) {
+          arabic = arabic.slice(1);
+        }
 
         const merged = arabic.map((a, i) => ({
           number: a.numberInSurah,
           arabic: a.text,
-          translation: indo[i]?.text || "",
-          audio: audioData[i]?.audio || "",
+          translation: indo[selected === 1 ? i + 1 : i]?.text || "",
+          audio: audioData[selected === 1 ? i + 1 : i]?.audio || "",
         }));
         if (!cancelled) setAyat(merged);
       } catch (e) {
@@ -319,8 +324,14 @@ function QuranApp() {
   return (
     <div style={{ fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif", background: COLORS.cream, minHeight: "100vh", color: COLORS.charcoal, paddingBottom: 70 }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Noto+Naskh+Arabic:wght@500;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
-        .arabic { font-family: 'Noto Naskh Arabic', serif; }
+        @import url('https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+        .arabic-text {
+          font-family: 'Amiri', 'Traditional Arabic', serif;
+          direction: rtl;
+          text-align: right;
+          letter-spacing: 0px;
+          word-spacing: 2px;
+        }
         .scrollbar-thin::-webkit-scrollbar { width: 4px; }
         .scrollbar-thin::-webkit-scrollbar-thumb { background: ${COLORS.gold}55; border-radius: 4px; }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -433,7 +444,7 @@ function HomeScreen({ loading, error, surahs, query, setQuery, onSelect, favorit
                   {INDO_MEANING[s.number] || s.englishNameTranslation} · {s.numberOfAyahs} ayat
                 </div>
               </div>
-              <div className="arabic" style={{ fontSize: 20, color: COLORS.deep, flexShrink: 0 }}>{s.name}</div>
+              <div className="arabic-text" style={{ fontSize: 20, color: COLORS.deep, flexShrink: 0 }}>{s.name}</div>
               <span onClick={(e) => { e.stopPropagation(); toggleFav(s.number); }} style={{ flexShrink: 0, marginLeft: 2 }}>
                 <IconHeart size={16} color={COLORS.gold} fill={favorites[s.number] ? COLORS.gold : "none"} />
               </span>
@@ -478,7 +489,7 @@ function DetailScreen({ surah, ayat, loading, error, onBack, isFav, onToggleFav 
   };
 
   const displayName = surah ? (CLEAN_SURAH_NAMES[surah.number] || surah.englishName) : "";
-  const showBismillah = surah && surah.number !== 9 && surah.number !== 1;
+  const showBismillah = surah && surah.number !== 9;
 
   return (
     <div style={{ maxWidth: 480, margin: "0 auto", minHeight: "100vh" }}>
@@ -493,7 +504,7 @@ function DetailScreen({ surah, ayat, loading, error, onBack, isFav, onToggleFav 
         </div>
         {surah && (
           <div style={{ textAlign: "center", marginTop: 8 }}>
-            <div className="arabic" style={{ color: COLORS.gold, fontSize: 30, marginBottom: 4 }}>{surah.name}</div>
+            <div className="arabic-text" style={{ color: COLORS.gold, fontSize: 30, marginBottom: 4, textAlign: "center" }}>{surah.name}</div>
             <div style={{ color: COLORS.cream, fontWeight: 700, fontSize: 17 }}>{displayName}</div>
             <div style={{ color: COLORS.cream, opacity: 0.7, fontSize: 12.5, marginTop: 2 }}>
               {INDO_MEANING[surah.number]} · {surah.numberOfAyahs} ayat
@@ -522,7 +533,7 @@ function DetailScreen({ surah, ayat, loading, error, onBack, isFav, onToggleFav 
         
         {!loading && !error && showBismillah && (
           <div style={{ background: "#fff", borderRadius: 14, padding: "18px", marginBottom: 14, border: `1px solid ${COLORS.deep}12`, textAlign: "center" }}>
-            <p className="arabic" style={{ fontSize: 24, lineHeight: 2, fontWeight: 700, color: COLORS.gold, margin: 0 }}>
+            <p className="arabic-text" style={{ fontSize: 24, lineHeight: 2.2, fontWeight: 700, color: COLORS.gold, margin: 0, textAlign: "center" }}>
               بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
             </p>
           </div>
@@ -530,13 +541,13 @@ function DetailScreen({ surah, ayat, loading, error, onBack, isFav, onToggleFav 
 
         {!loading && !error && ayat.map((a, idx) => (
           <div key={a.number}>
-            <div style={{ background: "#fff", borderRadius: 14, padding: "16px 16px", marginBottom: 12, border: `1px solid ${COLORS.deep}12`, boxShadow: playingIndex === idx ? `0 0 0 2px ${COLORS.gold}` : "none" }}>
+            <div style={{ background: "#fff", borderRadius: 14, padding: "18px 16px", marginBottom: 12, border: `1px solid ${COLORS.deep}12`, boxShadow: playingIndex === idx ? `0 0 0 2px ${COLORS.gold}` : "none" }}>
               <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
                 <span style={{ width: 24, height: 24, borderRadius: "50%", background: COLORS.cream, color: COLORS.deep, fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", border: `1px solid ${COLORS.gold}55` }}>
                   {a.number}
                 </span>
               </div>
-              <p className="arabic" style={{ fontSize: 26, lineHeight: 2.1, fontWeight: 700, textAlign: "right", color: COLORS.charcoal, margin: "0 0 12px" }}>{a.arabic}</p>
+              <p className="arabic-text" style={{ fontSize: 26, lineHeight: 2.4, fontWeight: 700, color: COLORS.charcoal, margin: "0 0 14px" }}>{a.arabic}</p>
               <p style={{ fontSize: 13.5, lineHeight: 1.6, color: COLORS.teal, margin: "0 0 14px" }}>{a.translation}</p>
 
               <div style={{ display: "flex", justifyContent: "flex-start", borderTop: `1px solid ${COLORS.cream}`, paddingTop: 10 }}>
@@ -576,7 +587,6 @@ function PrayerScreen({ location, locationStatus, onRequestLocation }) {
   const [loadingQibla, setLoadingQibla] = useState(false);
   const [errorQibla, setErrorQibla] = useState(null);
   
-  // State Kompas Sensor HP
   const [heading, setHeading] = useState(0);
   const [sensorActive, setSensorActive] = useState(false);
   const [sensorError, setSensorError] = useState("");
@@ -628,7 +638,6 @@ function PrayerScreen({ location, locationStatus, onRequestLocation }) {
     return () => { cancelled = true; };
   }, [location, subTab]);
 
-  // Handler Sensor Kompas HP
   const startCompass = async () => {
     setSensorError("");
     if (typeof window !== "undefined" && window.DeviceOrientationEvent) {
@@ -645,7 +654,6 @@ function PrayerScreen({ location, locationStatus, onRequestLocation }) {
           setSensorError("Sensor kompas tidak didukung perangkat ini.");
         }
       } else {
-        // Android / Browser standar
         window.addEventListener("deviceorientation", handleOrientation, true);
         setSensorActive(true);
       }
@@ -657,9 +665,9 @@ function PrayerScreen({ location, locationStatus, onRequestLocation }) {
   const handleOrientation = (e) => {
     let compass = null;
     if (e.webkitCompassHeading !== undefined) {
-      compass = e.webkitCompassHeading; // Khusus iOS Safari
+      compass = e.webkitCompassHeading;
     } else if (e.alpha !== null) {
-      compass = 360 - e.alpha; // Android Chrome
+      compass = 360 - e.alpha;
     }
     if (compass !== null) {
       setHeading(compass);
@@ -689,8 +697,6 @@ function PrayerScreen({ location, locationStatus, onRequestLocation }) {
     setPlayingKey(null);
   };
 
-  // Selisih putaran kompas HP dengan sudut kiblat
-  // qibla adalah arah kiblat dari utara, heading adalah arah hadap HP dari utara
   const rotationAngle = qibla !== null ? qibla - heading : 0;
 
   return (
@@ -777,7 +783,7 @@ function PrayerScreen({ location, locationStatus, onRequestLocation }) {
               {!sensorActive ? (
                 <div style={{ marginBottom: 16, padding: "12px", background: COLORS.cream, borderRadius: 10 }}>
                   <p style={{ fontSize: 13, color: COLORS.deep, fontWeight: 600, margin: "0 0 10px" }}>
-                    Aktifkan sensor kompas agar jarum bergerak otomatis saat HP diputar:
+                    Aktifkan sensor kompas agar jarum bergerak akurat saat HP diputar:
                   </p>
                   <button onClick={startCompass} style={{ background: COLORS.gold, color: COLORS.deep, border: "none", padding: "10px 18px", borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
                     Aktifkan Kompas HP
@@ -786,7 +792,7 @@ function PrayerScreen({ location, locationStatus, onRequestLocation }) {
                 </div>
               ) : (
                 <p style={{ fontSize: 12, color: COLORS.teal, fontWeight: 600, marginBottom: 8 }}>
-                  🟢 Kompas aktif. Arahkan bagian atas HP ke arah jarum emas.
+                  🟢 Kompas aktif. Putar HP sampai jarum pas di atas.
                 </p>
               )}
 
@@ -798,8 +804,7 @@ function PrayerScreen({ location, locationStatus, onRequestLocation }) {
                   <text x="110" y="204" textAnchor="middle" fontSize="14" fontWeight="700" fill={COLORS.teal}>S</text>
                   <text x="24" y="115" textAnchor="middle" fontSize="14" fontWeight="700" fill={COLORS.teal}>B</text>
                   
-                  {/* Jarum yang berputar otomatis sesuai rotasi sensor HP terhadap arah kiblat */}
-                  <g transform={`rotate(${rotationAngle} 110 110)`} style={{ transition: "transform 0.1s ease-out" }}>
+                  <g transform={`rotate(${rotationAngle} 110 110)`} style={{ transition: "transform 0.08s ease-out" }}>
                     <line x1="110" y1="110" x2="110" y2="30" stroke={COLORS.gold} strokeWidth="4" strokeLinecap="round" />
                     <polygon points="110,20 102,38 118,38" fill={COLORS.gold} />
                   </g>
@@ -822,7 +827,7 @@ function ZikirCard({ item }) {
   return (
     <div style={{ background: "#fff", borderRadius: 14, padding: "18px", marginBottom: 14, border: `1px solid ${COLORS.deep}12`, textAlign: "center" }}>
       <div style={{ fontWeight: 700, fontSize: 16, color: COLORS.charcoal, marginBottom: 8 }}>{item.title}</div>
-      <div className="arabic" style={{ fontSize: 26, color: COLORS.deep, margin: "10px 0" }}>{item.arabic}</div>
+      <div className="arabic-text" style={{ fontSize: 26, color: COLORS.deep, margin: "10px 0", textAlign: "center" }}>{item.arabic}</div>
       <div style={{ fontSize: 13, color: COLORS.teal, marginBottom: 14 }}>{item.translation}</div>
       <div style={{ fontSize: 20, fontWeight: 800, color: COLORS.gold, marginBottom: 10 }}>{count} / {item.target}</div>
       <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
