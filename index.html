@@ -298,25 +298,13 @@ function QuranApp() {
           arabic = arabic.slice(1);
         }
 
-        const merged = arabic.map((a, i) => {
-          let origIndex = selected === 1 ? i + 1 : i;
-          let arabicText = a.text;
-
-          // Pembersihan Bismillah mutlak pada ayat 1 (kecuali At-Taubah 9 & Al-Fatihah 1)
-          if (selected !== 9 && selected !== 1 && a.numberInSurah === 1) {
-            // Membuang teks apa pun dari awal string hingga kata "الرَّحِيمِ" atau "الرَّحِيْمِ"
-            arabicText = arabicText.replace(/^[\s\S]*?الرَّحِي[ْمِم]\s*/u, "").trim();
-          }
-
-          return {
-            number: a.numberInSurah,
-            arabic: arabicText,
-            transliteration: translit[origIndex]?.text || "",
-            translation: indo[origIndex]?.text || "",
-            audio: audioData[origIndex]?.audio || "",
-          };
-        });
-
+        const merged = arabic.map((a, i) => ({
+          number: a.numberInSurah,
+          arabic: a.text,
+          transliteration: translit[selected === 1 ? i + 1 : i]?.text || "",
+          translation: indo[selected === 1 ? i + 1 : i]?.text || "",
+          audio: audioData[selected === 1 ? i + 1 : i]?.audio || "",
+        }));
         if (!cancelled) setAyat(merged);
       } catch (e) {
         if (!cancelled) setErrorAyat("Gagal memuat ayat.");
@@ -346,14 +334,13 @@ function QuranApp() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         .arabic-text {
-          font-family: 'Amiri', 'Traditional Arabic', serif;
+          font-family: 'Amiri', serif;
           font-weight: 700;
           direction: rtl;
           text-align: right;
-          letter-spacing: 0.2px;
-          word-spacing: 2px;
-          line-height: 2.8;
-          font-size: 26px;
+          letter-spacing: 0px;
+          word-spacing: 1px;
+          line-height: 2.5;
           -webkit-font-smoothing: antialiased;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -555,7 +542,7 @@ function DetailScreen({ surah, ayat, loading, error, onBack, isFav, onToggleFav 
         
         {!loading && !error && showBismillah && (
           <div style={{ background: "#fff", borderRadius: 14, padding: "18px 16px", marginBottom: 12, border: `1px solid ${COLORS.deep}12`, textAlign: "center" }}>
-            <p className="arabic-text" style={{ fontSize: 26, fontWeight: 700, color: COLORS.charcoal, margin: "0 0 8px", textAlign: "center" }}>
+            <p className="arabic-text" style={{ fontSize: 24, fontWeight: 700, color: COLORS.charcoal, margin: "0 0 8px", textAlign: "center" }}>
               بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
             </p>
             <p style={{ fontSize: 13, color: "#00897B", fontWeight: 600, margin: "0 0 6px" }}>
@@ -570,12 +557,12 @@ function DetailScreen({ surah, ayat, loading, error, onBack, isFav, onToggleFav 
         {!loading && !error && ayat.map((a, idx) => (
           <div key={a.number} style={{ background: "#fff", borderRadius: 14, padding: "18px 16px", marginBottom: 12, border: `1px solid ${COLORS.deep}12`, boxShadow: playingIndex === idx ? `0 0 0 2px ${COLORS.gold}` : "none" }}>
             <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
-              <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#F5EEF0", color: "#A0522D", fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", border: `1px solid #D2B48C`, flexShrink: 0, marginTop: 4 }}>
+              <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#F5EEF0", color: "#A0522D", fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", border: `1px solid #D2B48C`, flexShrink: 0, marginTop: 4 }}>
                 {a.number}
               </div>
-              <div className="arabic-text" style={{ color: COLORS.charcoal, margin: 0, flex: 1, textAlign: "right" }}>
+              <p className="arabic-text" style={{ fontSize: 24, color: COLORS.charcoal, margin: 0, flex: 1, textAlign: "right" }}>
                 {a.arabic}
-              </div>
+              </p>
             </div>
 
             <p style={{ fontSize: 13, lineHeight: 1.5, color: "#00897B", margin: "0 0 8px", fontWeight: 600 }}>
@@ -610,7 +597,7 @@ const PRAYER_NAMES = {
   Isha: "Isya",
 };
 
-const ADHAN_AUDIO_URL = "https://www.islamcan.com/audio/adhan/azan1.mp3";
+const ADHAN_AUDIO_URL = "https://cdn.islamic.network/adhan/audio/azan1.mp3";
 
 function PrayerScreen({ location, locationStatus, onRequestLocation }) {
   const [timings, setTimings] = useState(null);
@@ -653,6 +640,7 @@ function PrayerScreen({ location, locationStatus, onRequestLocation }) {
     return () => { cancelled = true; };
   }, [location]);
 
+  // Cek otomatis alarm adzan setiap menit berdasarkan jam realtime
   useEffect(() => {
     if (!alarmActive || !timings) return;
     const interval = setInterval(() => {
@@ -663,7 +651,7 @@ function PrayerScreen({ location, locationStatus, onRequestLocation }) {
 
       Object.keys(PRAYER_NAMES).forEach((key) => {
         if (timings[key]) {
-          const prayerTime = timings[key].substring(0, 5);
+          const prayerTime = timings[key].substring(0, 5); // Format "HH:MM"
           if (prayerTime === currentTimeStr && playingKey === null) {
             playAdhan(key);
             if (Notification && Notification.permission === "granted") {
@@ -675,7 +663,7 @@ function PrayerScreen({ location, locationStatus, onRequestLocation }) {
           }
         }
       });
-    }, 10000);
+    }, 10000); // Cek tiap 10 detik
 
     return () => clearInterval(interval);
   }, [timings, alarmActive, playingKey]);
@@ -951,7 +939,7 @@ function ZikirCard({ item }) {
   return (
     <div style={{ background: "#fff", borderRadius: 14, padding: "18px", marginBottom: 14, border: `1px solid ${COLORS.deep}12`, textAlign: "center" }}>
       <div style={{ fontWeight: 700, fontSize: 16, color: COLORS.charcoal, marginBottom: 8 }}>{item.title}</div>
-      <div className="arabic-text" style={{ fontSize: 26, color: COLORS.deep, margin: "10px 0", textAlign: "center" }}>{item.arabic}</div>
+      <div className="arabic-text" style={{ fontSize: 24, color: COLORS.deep, margin: "10px 0", textAlign: "center" }}>{item.arabic}</div>
       <div style={{ fontSize: 13, color: COLORS.teal, marginBottom: 14 }}>{item.translation}</div>
       <div style={{ fontSize: 20, fontWeight: 800, color: COLORS.gold, marginBottom: 10 }}>{count} / {item.target}</div>
       <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
