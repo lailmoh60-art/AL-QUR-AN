@@ -26,27 +26,6 @@
 <script type="text/babel">
 const { useState, useEffect, useMemo, useRef } = React;
 
-const BISMILLAH_WORDS = ["بِسْمِ", "اللَّهِ", "الرَّحْمَٰنِ", "الرَّحِيمِ"];
-function normalizeArabic(s) {
-  return s
-    .replace(/[\u0610-\u061A\u064B-\u065F\u0670\u06D6-\u06ED]/g, "")
-    .replace(/[\u0622\u0623\u0625\u0671]/g, "\u0627")
-    .replace(/\u0629/g, "\u0647");
-}
-function splitBismillah(surahNumber, ayahNumber, text) {
-  if (ayahNumber !== 1 || surahNumber === 1 || surahNumber === 9) {
-    return { bismillah: null, text };
-  }
-  const words = text.trim().split(/\s+/);
-  if (words.length <= 4) return { bismillah: null, text };
-  const firstFour = words.slice(0, 4).map(normalizeArabic);
-  const refFour = BISMILLAH_WORDS.map(normalizeArabic);
-  const matches = firstFour.every((w, i) => w === refFour[i]);
-  if (!matches) return { bismillah: null, text };
-  return { bismillah: words.slice(0, 4).join(" "), text: words.slice(4).join(" ") };
-}
-
-// Kamus nama surah bersih (tanpa huruf dobel aneh)
 const CLEAN_SURAH_NAMES = {
   1: "Al-Fatihah", 2: "Al-Baqarah", 3: "Ali Imran", 4: "An-Nisa", 5: "Al-Ma'idah",
   6: "Al-An'am", 7: "Al-A'raf", 8: "Al-Anfal", 9: "At-Taubah", 10: "Yunus",
@@ -73,7 +52,6 @@ const CLEAN_SURAH_NAMES = {
   111: "Al-Lahab", 112: "Al-Ikhlas", 113: "Al-Falaq", 114: "An-Nas"
 };
 
-// ---- Icons ----
 function IconSearch({ size = 16, color = "currentColor" }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -214,32 +192,6 @@ function GeoPattern() {
   );
 }
 
-function useUserLocation() {
-  const [location, setLocation] = useState(null);
-  const [status, setStatus] = useState("loading");
-
-  useEffect(() => {
-    if (!navigator.geolocation) {
-      setLocation(FALLBACK_LOCATION);
-      setStatus("fallback");
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude, label: "Lokasi kamu saat ini" });
-        setStatus("granted");
-      },
-      () => {
-        setLocation(FALLBACK_LOCATION);
-        setStatus("fallback");
-      },
-      { timeout: 8000, maximumAge: 600000 }
-    );
-  }, []);
-
-  return { location, status };
-}
-
 function QuranApp() {
   const [activeTab, setActiveTab] = useState("quran");
   const [surahs, setSurahs] = useState([]);
@@ -252,13 +204,36 @@ function QuranApp() {
   const [errorAyat, setErrorAyat] = useState(null);
   const [favorites, setFavorites] = useState({});
 
-  const { location, status: locationStatus } = useUserLocation();
+  const [location, setLocation] = useState(null);
+  const [locationStatus, setLocationStatus] = useState("loading");
+
+  const requestUserLocation = () => {
+    setLocationStatus("loading");
+    if (!navigator.geolocation) {
+      setLocation(FALLBACK_LOCATION);
+      setLocationStatus("fallback");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude, label: "Lokasi GPS Aktif" });
+        setLocationStatus("granted");
+      },
+      () => {
+        setLocation(FALLBACK_LOCATION);
+        setLocationStatus("fallback");
+      },
+      { timeout: 10000, maximumAge: 0, enableHighAccuracy: true }
+    );
+  };
 
   useEffect(() => {
-    const handlePopState = (event) => {
-      if (selected !== null) {
-        setSelected(null);
-      }
+    requestUserLocation();
+  }, []);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      if (selected !== null) setSelected(null);
     };
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
@@ -311,16 +286,12 @@ function QuranApp() {
         const indo = data.data[1]?.ayahs || [];
         const audioData = data.data[2]?.ayahs || [];
 
-        const merged = arabic.map((a, i) => {
-          const { bismillah, text } = splitBismillah(selected, a.numberInSurah, a.text);
-          return {
-            number: a.numberInSurah,
-            arabic: text,
-            bismillah,
-            translation: indo[i]?.text || "",
-            audio: audioData[i]?.audio || "",
-          };
-        });
+        const merged = arabic.map((a, i) => ({
+          number: a.numberInSurah,
+          arabic: a.text,
+          translation: indo[i]?.text || "",
+          audio: audioData[i]?.audio || "",
+        }));
         if (!cancelled) setAyat(merged);
       } catch (e) {
         if (!cancelled) setErrorAyat("Gagal memuat ayat.");
@@ -335,13 +306,11 @@ function QuranApp() {
   const filtered = useMemo(() => {
     if (!query.trim()) return surahs;
     const q = query.toLowerCase();
-    return surahs.filter(
-      (s) => {
-        const cleanName = (CLEAN_SURAH_NAMES[s.number] || s.englishName).toLowerCase();
-        const indoMeaning = (INDO_MEANING[s.number] || "").toLowerCase();
-        return cleanName.includes(q) || indoMeaning.includes(q) || String(s.number).includes(q);
-      }
-    );
+    return surahs.filter((s) => {
+      const cleanName = (CLEAN_SURAH_NAMES[s.number] || s.englishName).toLowerCase();
+      const indoMeaning = (INDO_MEANING[s.number] || "").toLowerCase();
+      return cleanName.includes(q) || indoMeaning.includes(q) || String(s.number).includes(q);
+    });
   }, [surahs, query]);
 
   const currentSurah = surahs.find((s) => s.number === selected);
@@ -382,7 +351,7 @@ function QuranApp() {
             />
           )}
           {activeTab === "prayer" && (
-            <PrayerScreen location={location} locationStatus={locationStatus} />
+            <PrayerScreen location={location} locationStatus={locationStatus} onRequestLocation={requestUserLocation} />
           )}
           {activeTab === "zikir" && (
             <ZikirScreen />
@@ -500,11 +469,7 @@ function DetailScreen({ surah, ayat, loading, error, onBack, isFav, onToggleFav 
     const audio = new Audio(audioUrl);
     audioRef.current = audio;
     audio.onended = () => playFrom(index + 1);
-    audio.play().then(() => {
-      setPlayingIndex(index);
-    }).catch(() => {
-      setPlayingIndex(null);
-    });
+    audio.play().then(() => setPlayingIndex(index)).catch(() => setPlayingIndex(null));
   };
 
   const stopAudio = () => {
@@ -513,6 +478,7 @@ function DetailScreen({ surah, ayat, loading, error, onBack, isFav, onToggleFav 
   };
 
   const displayName = surah ? (CLEAN_SURAH_NAMES[surah.number] || surah.englishName) : "";
+  const showBismillah = surah && surah.number !== 9 && surah.number !== 1;
 
   return (
     <div style={{ maxWidth: 480, margin: "0 auto", minHeight: "100vh" }}>
@@ -553,11 +519,17 @@ function DetailScreen({ surah, ayat, loading, error, onBack, isFav, onToggleFav 
           </div>
         )}
         {error && <div style={{ textAlign: "center", padding: "32px 16px", color: "#8B3A2B", fontSize: 14 }}>{error}</div>}
+        
+        {!loading && !error && showBismillah && (
+          <div style={{ background: "#fff", borderRadius: 14, padding: "18px", marginBottom: 14, border: `1px solid ${COLORS.deep}12`, textAlign: "center" }}>
+            <p className="arabic" style={{ fontSize: 24, lineHeight: 2, fontWeight: 700, color: COLORS.gold, margin: 0 }}>
+              بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
+            </p>
+          </div>
+        )}
+
         {!loading && !error && ayat.map((a, idx) => (
           <div key={a.number}>
-            {a.bismillah && (
-              <p className="arabic" style={{ fontSize: 24, lineHeight: 2, fontWeight: 700, textAlign: "center", color: COLORS.gold, margin: "0 0 14px" }}>{a.bismillah}</p>
-            )}
             <div style={{ background: "#fff", borderRadius: 14, padding: "16px 16px", marginBottom: 12, border: `1px solid ${COLORS.deep}12`, boxShadow: playingIndex === idx ? `0 0 0 2px ${COLORS.gold}` : "none" }}>
               <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
                 <span style={{ width: 24, height: 24, borderRadius: "50%", background: COLORS.cream, color: COLORS.deep, fontSize: 11, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", border: `1px solid ${COLORS.gold}55` }}>
@@ -595,7 +567,7 @@ const PRAYER_NAMES = {
 
 const ADHAN_AUDIO_URL = "https://cdn.islamic.network/adhan/audio/azan1.mp3";
 
-function PrayerScreen({ location, locationStatus }) {
+function PrayerScreen({ location, locationStatus, onRequestLocation }) {
   const [timings, setTimings] = useState(null);
   const [loadingTimings, setLoadingTimings] = useState(false);
   const [errorTimings, setErrorTimings] = useState(null);
@@ -603,6 +575,12 @@ function PrayerScreen({ location, locationStatus }) {
   const [qibla, setQibla] = useState(null);
   const [loadingQibla, setLoadingQibla] = useState(false);
   const [errorQibla, setErrorQibla] = useState(null);
+  
+  // State Kompas Sensor HP
+  const [heading, setHeading] = useState(0);
+  const [sensorActive, setSensorActive] = useState(false);
+  const [sensorError, setSensorError] = useState("");
+
   const [playingKey, setPlayingKey] = useState(null);
   const [audioError, setAudioError] = useState(false);
   const audioRef = useRef(null);
@@ -650,15 +628,57 @@ function PrayerScreen({ location, locationStatus }) {
     return () => { cancelled = true; };
   }, [location, subTab]);
 
+  // Handler Sensor Kompas HP
+  const startCompass = async () => {
+    setSensorError("");
+    if (typeof window !== "undefined" && window.DeviceOrientationEvent) {
+      if (typeof DeviceOrientationEvent.requestPermission === "function") {
+        try {
+          const response = await DeviceOrientationEvent.requestPermission();
+          if (response === "granted") {
+            window.addEventListener("deviceorientation", handleOrientation, true);
+            setSensorActive(true);
+          } else {
+            setSensorError("Izin sensor kompas ditolak.");
+          }
+        } catch (err) {
+          setSensorError("Sensor kompas tidak didukung perangkat ini.");
+        }
+      } else {
+        // Android / Browser standar
+        window.addEventListener("deviceorientation", handleOrientation, true);
+        setSensorActive(true);
+      }
+    } else {
+      setSensorError("Perangkat tidak mendukung sensor arah (kompas).");
+    }
+  };
+
+  const handleOrientation = (e) => {
+    let compass = null;
+    if (e.webkitCompassHeading !== undefined) {
+      compass = e.webkitCompassHeading; // Khusus iOS Safari
+    } else if (e.alpha !== null) {
+      compass = 360 - e.alpha; // Android Chrome
+    }
+    if (compass !== null) {
+      setHeading(compass);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      window.removeEventListener("deviceorientation", handleOrientation, true);
+    };
+  }, []);
+
   const playAdhan = (key) => {
     if (audioRef.current) audioRef.current.pause();
     setAudioError(false);
     const audio = new Audio(ADHAN_AUDIO_URL);
     audioRef.current = audio;
     audio.onended = () => setPlayingKey(null);
-    audio.play().then(() => {
-      setPlayingKey(key);
-    }).catch(() => {
+    audio.play().then(() => setPlayingKey(key)).catch(() => {
       setAudioError(true);
       setPlayingKey(null);
     });
@@ -669,15 +689,24 @@ function PrayerScreen({ location, locationStatus }) {
     setPlayingKey(null);
   };
 
+  // Selisih putaran kompas HP dengan sudut kiblat
+  // qibla adalah arah kiblat dari utara, heading adalah arah hadap HP dari utara
+  const rotationAngle = qibla !== null ? qibla - heading : 0;
+
   return (
     <div style={{ maxWidth: 480, margin: "0 auto", paddingBottom: 32 }}>
       <div style={{ background: COLORS.deep, padding: "28px 20px 22px", borderBottomLeftRadius: 20, borderBottomRightRadius: 20, color: "#fff" }}>
         <IconClock size={22} color={COLORS.gold} />
         <h1 style={{ color: COLORS.cream, fontSize: 24, fontWeight: 800, margin: "6px 0 2px" }}>Sholat</h1>
-        <div style={{ display: "flex", alignItems: "center", gap: 6, color: COLORS.cream, opacity: 0.75, fontSize: 13 }}>
-          <IconMapPin size={13} color={COLORS.cream} />
-          {location ? location.label : "Mendeteksi lokasi..."}
-          {locationStatus === "fallback" && " · aktifkan izin lokasi untuk hasil akurat"}
+        
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, color: COLORS.cream, opacity: 0.8, fontSize: 12.5 }}>
+            <IconMapPin size={13} color={COLORS.cream} />
+            {location ? location.label : "Mendeteksi lokasi..."}
+          </div>
+          <button onClick={onRequestLocation} style={{ background: "rgba(255,255,255,0.15)", border: "none", color: COLORS.gold, fontSize: 11, fontWeight: 700, padding: "4px 8px", borderRadius: 6, cursor: "pointer" }}>
+            Refresh GPS
+          </button>
         </div>
 
         <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
@@ -743,7 +772,24 @@ function PrayerScreen({ location, locationStatus }) {
           {errorQibla && <div style={{ padding: "32px 16px", color: "#8B3A2B", fontSize: 14 }}>{errorQibla}</div>}
 
           {!loadingQibla && !errorQibla && qibla !== null && (
-            <div style={{ background: "#fff", borderRadius: 16, padding: "24px 16px", border: `1px solid ${COLORS.deep}12` }}>
+            <div style={{ background: "#fff", borderRadius: 16, padding: "20px 16px", border: `1px solid ${COLORS.deep}12` }}>
+              
+              {!sensorActive ? (
+                <div style={{ marginBottom: 16, padding: "12px", background: COLORS.cream, borderRadius: 10 }}>
+                  <p style={{ fontSize: 13, color: COLORS.deep, fontWeight: 600, margin: "0 0 10px" }}>
+                    Aktifkan sensor kompas agar jarum bergerak otomatis saat HP diputar:
+                  </p>
+                  <button onClick={startCompass} style={{ background: COLORS.gold, color: COLORS.deep, border: "none", padding: "10px 18px", borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                    Aktifkan Kompas HP
+                  </button>
+                  {sensorError && <p style={{ fontSize: 11, color: "#8B3A2B", marginTop: 6 }}>{sensorError}</p>}
+                </div>
+              ) : (
+                <p style={{ fontSize: 12, color: COLORS.teal, fontWeight: 600, marginBottom: 8 }}>
+                  🟢 Kompas aktif. Arahkan bagian atas HP ke arah jarum emas.
+                </p>
+              )}
+
               <div style={{ position: "relative", width: 220, height: 220, margin: "0 auto" }}>
                 <svg width="220" height="220" viewBox="0 0 220 220">
                   <circle cx="110" cy="110" r="100" fill={COLORS.cream} stroke={COLORS.deep} strokeWidth="2" />
@@ -751,15 +797,18 @@ function PrayerScreen({ location, locationStatus }) {
                   <text x="196" y="115" textAnchor="middle" fontSize="14" fontWeight="700" fill={COLORS.teal}>T</text>
                   <text x="110" y="204" textAnchor="middle" fontSize="14" fontWeight="700" fill={COLORS.teal}>S</text>
                   <text x="24" y="115" textAnchor="middle" fontSize="14" fontWeight="700" fill={COLORS.teal}>B</text>
-                  <g transform={`rotate(${qibla} 110 110)`}>
+                  
+                  {/* Jarum yang berputar otomatis sesuai rotasi sensor HP terhadap arah kiblat */}
+                  <g transform={`rotate(${rotationAngle} 110 110)`} style={{ transition: "transform 0.1s ease-out" }}>
                     <line x1="110" y1="110" x2="110" y2="30" stroke={COLORS.gold} strokeWidth="4" strokeLinecap="round" />
                     <polygon points="110,20 102,38 118,38" fill={COLORS.gold} />
                   </g>
                   <circle cx="110" cy="110" r="6" fill={COLORS.deep} />
                 </svg>
               </div>
+
               <p style={{ fontSize: 22, fontWeight: 800, color: COLORS.deep, margin: "16px 0 4px" }}>{qibla.toFixed(1)}°</p>
-              <p style={{ fontSize: 13, color: COLORS.teal, margin: 0 }}>dari arah Utara sebenarnya (searah jarum jam)</p>
+              <p style={{ fontSize: 12.5, color: COLORS.teal, margin: 0 }}>Sudut kiblat dari Utara · Heading HP: {heading.toFixed(0)}°</p>
             </div>
           )}
         </div>
