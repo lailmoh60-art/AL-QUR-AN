@@ -286,37 +286,23 @@ function QuranApp() {
       try {
         setLoadingAyat(true);
         setErrorAyat(null);
-        const res = await fetch(`https://api.alquran.cloud/v1/surah/${selected}/editions/quran-uthmani,en.transliteration,id.indonesian,ar.alafasy`);
+        const res = await fetch(`https://api.alquran.cloud/v1/surah/${selected}/editions/quran-uthmani,id.indonesian,ar.alafasy`);
         if (!res.ok) throw new Error("Gagal");
         const data = await res.json();
         let arabic = data.data[0]?.ayahs || [];
-        const translit = data.data[1]?.ayahs || [];
-        const indo = data.data[2]?.ayahs || [];
-        const audioData = data.data[3]?.ayahs || [];
+        const indo = data.data[1]?.ayahs || [];
+        const audioData = data.data[2]?.ayahs || [];
 
         if (selected === 1 && arabic.length > 0) {
           arabic = arabic.slice(1);
         }
 
-        const merged = arabic.map((a, i) => {
-          let origIndex = selected === 1 ? i + 1 : i;
-          let arabicText = a.text;
-
-          // Pembersihan Bismillah mutlak pada ayat 1 (kecuali At-Taubah 9 & Al-Fatihah 1)
-          if (selected !== 9 && selected !== 1 && a.numberInSurah === 1) {
-            // Membuang teks apa pun dari awal string hingga kata "الرَّحِيمِ" atau "الرَّحِيْمِ"
-            arabicText = arabicText.replace(/^[\s\S]*?الرَّحِي[ْمِم]\s*/u, "").trim();
-          }
-
-          return {
-            number: a.numberInSurah,
-            arabic: arabicText,
-            transliteration: translit[origIndex]?.text || "",
-            translation: indo[origIndex]?.text || "",
-            audio: audioData[origIndex]?.audio || "",
-          };
-        });
-
+        const merged = arabic.map((a, i) => ({
+          number: a.numberInSurah,
+          arabic: a.text,
+          translation: indo[selected === 1 ? i + 1 : i]?.text || "",
+          audio: audioData[selected === 1 ? i + 1 : i]?.audio || "",
+        }));
         if (!cancelled) setAyat(merged);
       } catch (e) {
         if (!cancelled) setErrorAyat("Gagal memuat ayat.");
@@ -346,16 +332,17 @@ function QuranApp() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
         .arabic-text {
-          font-family: 'Amiri', 'Traditional Arabic', serif;
+          font-family: 'Amiri', serif;
           font-weight: 700;
           direction: rtl;
           text-align: right;
-          letter-spacing: 0.2px;
+          letter-spacing: 0px;
           word-spacing: 2px;
-          line-height: 2.8;
-          font-size: 26px;
+          line-height: 2.6;
           -webkit-font-smoothing: antialiased;
         }
+        .scrollbar-thin::-webkit-scrollbar { width: 4px; }
+        .scrollbar-thin::-webkit-scrollbar-thumb { background: ${COLORS.gold}55; border-radius: 4px; }
         @keyframes spin { to { transform: rotate(360deg); } }
       `}</style>
 
@@ -526,10 +513,10 @@ function DetailScreen({ surah, ayat, loading, error, onBack, isFav, onToggleFav 
         </div>
         {surah && (
           <div style={{ textAlign: "center", marginTop: 8 }}>
-            <div className="arabic-text" style={{ color: COLORS.gold, fontSize: 26, marginBottom: 2, textAlign: "center", lineHeight: 1.4 }}>{surah.name}</div>
-            <div style={{ color: COLORS.cream, fontWeight: 700, fontSize: 16 }}>{displayName}</div>
-            <div style={{ color: COLORS.cream, opacity: 0.7, fontSize: 12, marginTop: 2 }}>
-              {surah.revelationType === 'Meccan' ? 'Makkiyah' : 'Madaniyah'} · {surah.numberOfAyahs} ayat
+            <div className="arabic-text" style={{ color: COLORS.gold, fontSize: 28, marginBottom: 4, textAlign: "center", lineHeight: 1.5 }}>{surah.name}</div>
+            <div style={{ color: COLORS.cream, fontWeight: 700, fontSize: 17 }}>{displayName}</div>
+            <div style={{ color: COLORS.cream, opacity: 0.7, fontSize: 12.5, marginTop: 2 }}>
+              {INDO_MEANING[surah.number]} · {surah.numberOfAyahs} ayat
             </div>
           </div>
         )}
@@ -544,7 +531,7 @@ function DetailScreen({ surah, ayat, loading, error, onBack, isFav, onToggleFav 
         )}
       </div>
 
-      <div style={{ padding: "14px 16px 40px" }}>
+      <div style={{ padding: "18px 16px 40px" }}>
         {loading && (
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "48px 0", color: COLORS.teal }}>
             <IconLoader size={26} color={COLORS.teal} />
@@ -554,46 +541,33 @@ function DetailScreen({ surah, ayat, loading, error, onBack, isFav, onToggleFav 
         {error && <div style={{ textAlign: "center", padding: "32px 16px", color: "#8B3A2B", fontSize: 14 }}>{error}</div>}
         
         {!loading && !error && showBismillah && (
-          <div style={{ background: "#fff", borderRadius: 14, padding: "18px 16px", marginBottom: 12, border: `1px solid ${COLORS.deep}12`, textAlign: "center" }}>
-            <p className="arabic-text" style={{ fontSize: 26, fontWeight: 700, color: COLORS.charcoal, margin: "0 0 8px", textAlign: "center" }}>
+          <div style={{ background: "#fff", borderRadius: 14, padding: "20px", marginBottom: 14, border: `1px solid ${COLORS.deep}12`, textAlign: "center" }}>
+            <p className="arabic-text" style={{ fontSize: 24, fontWeight: 700, color: COLORS.gold, margin: 0, textAlign: "center" }}>
               بِسْمِ اللَّهِ الرَّحْمَٰنِ الرَّحِيمِ
-            </p>
-            <p style={{ fontSize: 13, color: "#00897B", fontWeight: 600, margin: "0 0 6px" }}>
-              bismillâhir-rahmânir-rahîm
-            </p>
-            <p style={{ fontSize: 13, color: COLORS.charcoal, margin: 0, opacity: 0.85 }}>
-              Dengan nama Allah Yang Maha Pengasih lagi Maha Penyayang.
             </p>
           </div>
         )}
 
         {!loading && !error && ayat.map((a, idx) => (
-          <div key={a.number} style={{ background: "#fff", borderRadius: 14, padding: "18px 16px", marginBottom: 12, border: `1px solid ${COLORS.deep}12`, boxShadow: playingIndex === idx ? `0 0 0 2px ${COLORS.gold}` : "none" }}>
-            <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
-              <div style={{ width: 32, height: 32, borderRadius: "50%", background: "#F5EEF0", color: "#A0522D", fontSize: 12, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", border: `1px solid #D2B48C`, flexShrink: 0, marginTop: 4 }}>
-                {a.number}
+          <div key={a.number}>
+            <div style={{ background: "#fff", borderRadius: 14, padding: "20px 16px", marginBottom: 14, border: `1px solid ${COLORS.deep}12`, boxShadow: playingIndex === idx ? `0 0 0 2px ${COLORS.gold}` : "none" }}>
+              <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
+                <span style={{ width: 26, height: 26, borderRadius: "50%", background: COLORS.cream, color: COLORS.deep, fontSize: 11.5, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", border: `1px solid ${COLORS.gold}55` }}>
+                  {a.number}
+                </span>
               </div>
-              <div className="arabic-text" style={{ color: COLORS.charcoal, margin: 0, flex: 1, textAlign: "right" }}>
-                {a.arabic}
+              <p className="arabic-text" style={{ fontSize: 24, color: COLORS.charcoal, margin: "0 0 16px" }}>{a.arabic}</p>
+              <p style={{ fontSize: 14, lineHeight: 1.6, color: COLORS.teal, margin: "0 0 14px", fontWeight: 500 }}>{a.translation}</p>
+
+              <div style={{ display: "flex", justifyContent: "flex-start", borderTop: `1px solid ${COLORS.cream}`, paddingTop: 10 }}>
+                <button
+                  onClick={() => (playingIndex === idx ? stopAudio() : playFrom(idx))}
+                  style={{ background: playingIndex === idx ? COLORS.gold : COLORS.cream, color: playingIndex === idx ? "#fff" : COLORS.deep, border: `1px solid ${COLORS.gold}55`, borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 600, display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}
+                >
+                  {playingIndex === idx ? <IconPause size={14} color="#fff" /> : <IconPlay size={14} color={COLORS.deep} />}
+                  {playingIndex === idx ? "Jeda Audio" : "Putar Audio"}
+                </button>
               </div>
-            </div>
-
-            <p style={{ fontSize: 13, lineHeight: 1.5, color: "#00897B", margin: "0 0 8px", fontWeight: 600 }}>
-              {a.transliteration}
-            </p>
-
-            <p style={{ fontSize: 14, lineHeight: 1.5, color: COLORS.charcoal, margin: "0 0 12px", opacity: 0.9 }}>
-              {a.translation}
-            </p>
-
-            <div style={{ display: "flex", justifyContent: "flex-end", borderTop: `1px solid ${COLORS.cream}`, paddingTop: 10 }}>
-              <button
-                onClick={() => (playingIndex === idx ? stopAudio() : playFrom(idx))}
-                style={{ background: playingIndex === idx ? COLORS.gold : COLORS.cream, color: playingIndex === idx ? "#fff" : COLORS.deep, border: `1px solid ${COLORS.gold}55`, borderRadius: 8, padding: "5px 10px", fontSize: 11.5, fontWeight: 600, display: "flex", alignItems: "center", gap: 5, cursor: "pointer" }}
-              >
-                {playingIndex === idx ? <IconPause size={13} color="#fff" /> : <IconPlay size={13} color={COLORS.deep} />}
-                {playingIndex === idx ? "Jeda" : "Putar Audio"}
-              </button>
             </div>
           </div>
         ))}
@@ -603,6 +577,7 @@ function DetailScreen({ surah, ayat, loading, error, onBack, isFav, onToggleFav 
 }
 
 const PRAYER_NAMES = {
+  Imsak: "Imsak",
   Fajr: "Subuh",
   Dhuhr: "Dzuhur",
   Asr: "Ashar",
@@ -610,7 +585,7 @@ const PRAYER_NAMES = {
   Isha: "Isya",
 };
 
-const ADHAN_AUDIO_URL = "https://www.islamcan.com/audio/adhan/azan1.mp3";
+const ADHAN_AUDIO_URL = "https://cdn.islamic.network/adhan/audio/azan1.mp3";
 
 function PrayerScreen({ location, locationStatus, onRequestLocation }) {
   const [timings, setTimings] = useState(null);
@@ -628,7 +603,6 @@ function PrayerScreen({ location, locationStatus, onRequestLocation }) {
 
   const [playingKey, setPlayingKey] = useState(null);
   const [audioError, setAudioError] = useState(false);
-  const [alarmActive, setAlarmActive] = useState(true);
   const audioRef = useRef(null);
 
   useEffect(() => {
@@ -652,43 +626,6 @@ function PrayerScreen({ location, locationStatus, onRequestLocation }) {
     fetchTimings();
     return () => { cancelled = true; };
   }, [location]);
-
-  useEffect(() => {
-    if (!alarmActive || !timings) return;
-    const interval = setInterval(() => {
-      const now = new Date();
-      const currentHours = String(now.getHours()).padStart(2, '0');
-      const currentMinutes = String(now.getMinutes()).padStart(2, '0');
-      const currentTimeStr = `${currentHours}:${currentMinutes}`;
-
-      Object.keys(PRAYER_NAMES).forEach((key) => {
-        if (timings[key]) {
-          const prayerTime = timings[key].substring(0, 5);
-          if (prayerTime === currentTimeStr && playingKey === null) {
-            playAdhan(key);
-            if (Notification && Notification.permission === "granted") {
-              new Notification(`Waktu ${PRAYER_NAMES[key]} Telah Tiba`, {
-                body: "Mari segera menunaikan ibadah sholat.",
-                icon: "./icon.png"
-              });
-            }
-          }
-        }
-      });
-    }, 10000);
-
-    return () => clearInterval(interval);
-  }, [timings, alarmActive, playingKey]);
-
-  const requestNotificationPermission = () => {
-    if (typeof Notification !== "undefined" && Notification.permission !== "granted") {
-      Notification.requestPermission();
-    }
-  };
-
-  useEffect(() => {
-    requestNotificationPermission();
-  }, []);
 
   useEffect(() => {
     if (!location || subTab !== "kiblat") return;
@@ -780,28 +717,23 @@ function PrayerScreen({ location, locationStatus, onRequestLocation }) {
     setPlayingKey(null);
   };
 
+  // Kunci utama arah kiblat: 
+  // Dial kompas luar berputar sejauh -heading (mengikuti putaran HP).
+  // Jarum penunjuk Ka'bah diputar sebesar sudut qibla relatif terhadap utara.
   const dialRotation = -heading;
   const needleRotation = qibla !== null ? qibla : 0;
+  
+  // Selisih sudut hadap HP dengan arah kiblat untuk indikator pas/kurang
   const diffToQibla = qibla !== null ? Math.round((heading - qibla + 360) % 360) : 0;
   const isFacingQibla = diffToQibla <= 5 || diffToQibla >= 355;
 
   return (
     <div style={{ maxWidth: 480, margin: "0 auto", paddingBottom: 32 }}>
       <div style={{ background: COLORS.deep, padding: "28px 20px 22px", borderBottomLeftRadius: 20, borderBottomRightRadius: 20, color: "#fff" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <IconClock size={22} color={COLORS.gold} />
-            <h1 style={{ color: COLORS.cream, fontSize: 24, fontWeight: 800, margin: 0 }}>Sholat</h1>
-          </div>
-          <button
-            onClick={() => setAlarmActive(!alarmActive)}
-            style={{ background: alarmActive ? COLORS.gold : "rgba(255,255,255,0.15)", color: alarmActive ? COLORS.deep : "#fff", border: "none", padding: "6px 12px", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer" }}
-          >
-            {alarmActive ? "🔔 Alarm ON" : "🔕 Alarm OFF"}
-          </button>
-        </div>
+        <IconClock size={22} color={COLORS.gold} />
+        <h1 style={{ color: COLORS.cream, fontSize: 24, fontWeight: 800, margin: "6px 0 2px" }}>Sholat</h1>
         
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, color: COLORS.cream, opacity: 0.8, fontSize: 12.5 }}>
             <IconMapPin size={13} color={COLORS.cream} />
             {location ? location.label : "Mendeteksi lokasi..."}
@@ -908,11 +840,16 @@ function PrayerScreen({ location, locationStatus, onRequestLocation }) {
                 </div>
               )}
 
+              {/* KOMPAS MODEL DIAL BERPUTAR & JARUM KIBLAT TETAP */}
               <div style={{ position: "relative", width: 220, height: 220, margin: "0 auto" }}>
                 <svg width="220" height="220" viewBox="0 0 220 220">
+                  {/* Lingkaran Luar Statis (Bodi HP) */}
                   <circle cx="110" cy="110" r="100" fill={COLORS.cream} stroke={COLORS.deep} strokeWidth="3" />
-                  <polygon points="110,6 104,18 116,18" fill={COLORS.deep} />
                   
+                  {/* Indikator Atas HP (Arah Pandang Depan) */}
+                  <polygon points="110,6 104,18 116,18" fill={COLORS.deep} />
+
+                  {/* Dial Kompas yang Berputar Mengikuti Hadap HP */}
                   <g transform={`rotate(${dialRotation} 110 110)`} style={{ transition: "transform 0.05s linear" }}>
                     <text x="110" y="28" textAnchor="middle" fontSize="13" fontWeight="800" fill={COLORS.deep}>U</text>
                     <text x="194" y="115" textAnchor="middle" fontSize="13" fontWeight="700" fill={COLORS.teal}>T</text>
@@ -922,11 +859,13 @@ function PrayerScreen({ location, locationStatus, onRequestLocation }) {
                     <line x1="32" y1="110" x2="188" y2="110" stroke={COLORS.teal} strokeWidth="1" strokeDasharray="3 3" opacity="0.3" />
                   </g>
 
+                  {/* Jarum Penunjuk Kiblat (Warna Emas Menuju Titik Ka'bah) */}
                   <g transform={`rotate(${needleRotation} 110 110)`} style={{ transition: "transform 0.08s ease-out" }}>
                     <polygon points="110,40 101,65 119,65" fill={COLORS.gold} />
                     <line x1="110" y1="65" x2="110" y2="110" stroke={COLORS.gold} strokeWidth="4" strokeLinecap="round" />
                   </g>
 
+                  {/* Titik Pusat Kompas */}
                   <circle cx="110" cy="110" r="8" fill={COLORS.deep} />
                   <circle cx="110" cy="110" r="4" fill={COLORS.gold} />
                 </svg>
@@ -951,7 +890,7 @@ function ZikirCard({ item }) {
   return (
     <div style={{ background: "#fff", borderRadius: 14, padding: "18px", marginBottom: 14, border: `1px solid ${COLORS.deep}12`, textAlign: "center" }}>
       <div style={{ fontWeight: 700, fontSize: 16, color: COLORS.charcoal, marginBottom: 8 }}>{item.title}</div>
-      <div className="arabic-text" style={{ fontSize: 26, color: COLORS.deep, margin: "10px 0", textAlign: "center" }}>{item.arabic}</div>
+      <div className="arabic-text" style={{ fontSize: 24, color: COLORS.deep, margin: "10px 0", textAlign: "center" }}>{item.arabic}</div>
       <div style={{ fontSize: 13, color: COLORS.teal, marginBottom: 14 }}>{item.translation}</div>
       <div style={{ fontSize: 20, fontWeight: 800, color: COLORS.gold, marginBottom: 10 }}>{count} / {item.target}</div>
       <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
